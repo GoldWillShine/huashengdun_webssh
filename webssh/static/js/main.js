@@ -3,134 +3,100 @@
 var jQuery;
 var wssh = {};
 
-function showCopyStatus(message, color) {
-  var copyStatus = document.getElementById('copyStatus');
-  if (copyStatus) {
-    copyStatus.textContent = message;
-    copyStatus.style.color = color;
-    copyStatus.style.display = 'inline';
-    setTimeout(() => {
-      copyStatus.style.display = 'none';
-    }, 3000);
-  } else {
-    console.error('copyStatus element not found');
-  }
-}
 
-function copyToClipboard(text) {
-  if (!text) {
-    showCopyStatus('No text to copy', 'red');
-    return;
+(function() {
+  // For FormData without getter and setter
+  var proto = FormData.prototype,
+      data = {};
+
+  if (!proto.get) {
+    proto.get = function (name) {
+      if (data[name] === undefined) {
+        var input = document.querySelector('input[name="' + name + '"]'),
+            value;
+        if (input) {
+          if (input.type === 'file') {
+            value = input.files[0];
+          } else {
+            value = input.value;
+          }
+          data[name] = value;
+        }
+      }
+      return data[name];
+    };
   }
 
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(function() {
-      showCopyStatus('SSH link copied to clipboard!', 'green');
-    }).catch(function(err) {
-      console.error('Could not copy text: ', err);
-      showCopyStatus('Failed to copy: ' + err.message, 'red');
-    });
-  } else {
-    var textArea = document.createElement("textarea");
-    textArea.value = text;
-    document.body.appendChild(textArea);
-    textArea.select();
-    try {
-      var successful = document.execCommand('copy');
-      var msg = successful ? 'SSH link copied to clipboard!' : 'Copy failed';
-      showCopyStatus(msg, successful ? 'green' : 'red');
-    } catch (err) {
-      console.error('Could not copy text: ', err);
-      showCopyStatus('Failed to copy: ' + err.message, 'red');
+  if (!proto.set) {
+    proto.set = function (name, value) {
+      data[name] = value;
+    };
+  }
+
+  document.querySelector('#sshlinkBtn').addEventListener("click", updateSSHlink);
+}());
+
+// 清理数据中的空格
+function clean_data(data) {
+  var attrs = form_keys.concat(['privatekey', 'passphrase']);
+  for (let i = 0; i < attrs.length; i++) {
+    let attr = attrs[i];
+    let val = data.get(attr);
+    if (typeof val === 'string') {
+      data.set(attr, val.trim());
     }
-    document.body.removeChild(textArea);
   }
 }
 
-function updateSSHlink() {
-  var hostname = encodeURIComponent(document.getElementById("hostname").value);
-  var port = encodeURIComponent(document.getElementById("port").value || "22");
-  var username = encodeURIComponent(document.getElementById("username").value || "root");
-  var password = encodeURIComponent(btoa(document.getElementById("password").value));
+// 表单验证
+function validate_form_data(data) {
+  clean_data(data);
+  var hostname = data.get('hostname');
+  var port = data.get('port');
+  var username = data.get('username');
+  var pk = data.get('privatekey');
+  var result = {
+    valid: false,
+    data: data,
+    title: ''
+  };
+  var errors = [];
 
-  var baseUrl = window.location.origin + window.location.pathname;
-  var sshlinkstr = `${baseUrl}?hostname=${hostname}&port=${port}&username=${username}&password=${password}`;
-
-  var sshlinkInput = document.getElementById("sshlink");
-  if (sshlinkInput) {
-    sshlinkInput.value = sshlinkstr;
-    sshlinkInput.style.display = 'block';
+  if (!hostname) {
+    errors.push('Value of hostname is required.');
   } else {
-    console.error('sshlink input not found');
+    if (!hostname_tester.test(hostname)) {
+      errors.push('Invalid hostname: ' + hostname);
+    }
   }
 
-  var copyButton = document.getElementById("copy-button");
-  if (copyButton) {
-    copyButton.style.display = 'block';
+  if (!port) {
+    port = 22;
   } else {
-    console.error('copy-button not found');
+    if (!(port > 0 && port <= 65535)) {
+      errors.push('Invalid port: ' + port);
+    }
   }
 
-  console.log('SSH Link updated:', sshlinkstr); // 调试输出
+  if (!username) {
+    errors.push('Value of username is required.');
+  }
+
+  if (pk) {
+    var size = pk.size || pk.length;
+    if (size > key_max_size) {
+      errors.push('Invalid private key: ' + pk.name || '');
+    }
+  }
+
+  if (!errors.length || debug) {
+    result.valid = true;
+    result.title = username + '@' + hostname + ':' + port;
+  }
+  result.errors = errors;
+
+  return result;
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-  var sshlinkBtn = document.getElementById('sshlinkBtn');
-  if (sshlinkBtn) {
-    sshlinkBtn.addEventListener("click", updateSSHlink);
-  } else {
-    console.error('sshlinkBtn not found');
-  }
-
-  var sshlinkInput = document.getElementById("sshlink");
-  if (sshlinkInput) {
-    sshlinkInput.style.cursor = "pointer";
-    sshlinkInput.title = "Click to copy";
-    sshlinkInput.addEventListener("click", function() {
-      copyToClipboard(this.value);
-    });
-  } else {
-    console.error('sshlink input not found');
-  }
-
-  var copyButton = document.getElementById("copy-button");
-  if (copyButton) {
-    copyButton.addEventListener("click", function() {
-      var sshlinkValue = document.getElementById("sshlink").value;
-      copyToClipboard(sshlinkValue);
-    });
-  } else {
-    console.error('copy-button not found');
-  }
-});
-
-jQuery(function($){
-  var status = $('#status'),
-      button = $('.btn-primary'),
-      form_container = $('.form-container'),
-      waiter = $('#waiter'),
-      term_type = $('#term'),
-      style = {},
-      default_title = 'WebSSH',
-      title_element = document.querySelector('title'),
-      form_id = '#connect',
-      debug = document.querySelector(form_id).noValidate,
-      custom_font = document.fonts ? document.fonts.values().next().value : undefined,
-      default_fonts,
-      DISCONNECTED = 0,
-      CONNECTING = 1,
-      CONNECTED = 2,
-      state = DISCONNECTED,
-      messages = {1: 'This client is connecting ...', 2: 'This client is already connnected.'},
-      key_max_size = 16384,
-      fields = ['hostname', 'port', 'username'],
-      form_keys = fields.concat(['password', 'totp']),
-      opts_keys = ['bgcolor', 'title', 'encoding', 'command', 'term', 'fontsize', 'fontcolor', 'cursor'],
-      url_form_data = {},
-      url_opts_data = {},
-      validated_form_data,
-      event_origin,
-      hostname_tester = /((^\s*((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]))\s*$)|(^\s*((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?\s*$))|(^\s*((?=.{1,255}$)(?=.*[A-Za-z].*)[0-9A-Za-z](?:(?:[0-9A-Za-z]|\b-){0,61}[0-9A-Za-z])?(?:\.[0-9A-Za-z](?:(?:[0-9A-Za-z]|\b-){0,61}[0-9A-Za-z])?)*)\s*$)/;
 
 
   function store_items(names, data) {
@@ -159,63 +125,75 @@ jQuery(function($){
   }
 
 
-  function populate_form(data) {
-    var names = form_keys.concat(['passphrase']),
-        i, name;
+// 使用选项连接
+function connect_with_options(data) {
+  var form = document.querySelector(form_id);
+  var url = data.url || form.action;
+  var _xsrf = form.querySelector('input[name="_xsrf"]');
 
-    for (i=0; i < names.length; i++) {
-      name = names[i];
-      $('#'+name).val(data.get(name));
-    }
+  var result = validate_form_data(wrap_object(data));
+  if (!result.valid) {
+    log_status(result.errors.join('\n'));
+    return;
   }
 
-
-  function get_object_length(object) {
-    return Object.keys(object).length;
+  data.term = term_type.val();
+  data._xsrf = _xsrf.value;
+  if (event_origin) {
+    data._origin = event_origin;
   }
 
+  status.text('');
+  button.prop('disabled', true);
 
-  function decode_uri_component(uri) {
-    try {
-      return decodeURIComponent(uri);
-    } catch(e) {
-      console.error(e);
-    }
-    return '';
+  $.ajax({
+    url: url,
+    type: 'post',
+    data: data,
+    complete: ajax_complete_callback
+  });
+
+  return result;
+}
+
+// 处理连接请求
+function connect(hostname, port, username, password, privatekey, passphrase, totp) {
+  var result, opts;
+
+  if (state !== 'DISCONNECTED') {
+    console.log(messages[state]);
+    return;
   }
 
-
-  function decode_password(encoded) {
-    try {
-      return window.atob(encoded);
-    } catch (e) {
-       console.error(e);
+  if (hostname === undefined) {
+    result = connect_without_options();
+  } else {
+    if (typeof hostname === 'string') {
+      opts = {
+        hostname: hostname,
+        port: port,
+        username: username,
+        password: password,
+        privatekey: privatekey,
+        passphrase: passphrase,
+        totp: totp
+      };
+    } else {
+      opts = hostname;
     }
-    return null;
+
+    result = connect_with_options(opts);
   }
 
-
-  function parse_url_data(string, form_keys, opts_keys, form_map, opts_map) {
-    var i, pair, key, val,
-        arr = string.split('&');
-
-    for (i = 0; i < arr.length; i++) {
-      pair = arr[i].split('=');
-      key = pair[0].trim().toLowerCase();
-      val = pair.slice(1).join('=').trim();
-
-      if (form_keys.indexOf(key) >= 0) {
-        form_map[key] = val;
-      } else if (opts_keys.indexOf(key) >=0) {
-        opts_map[key] = val;
-      }
+  if (result) {
+    state = 'CONNECTING';
+    default_title = result.title;
+    if (hostname) {
+      validated_form_data = result.data;
     }
-
-    if (form_map.password) {
-      form_map.password = decode_password(form_map.password);
-    }
+    store_items(fields, result.data);
   }
-
+}
 
   function parse_xterm_style() {
     var text = $('.xterm-helpers style').text();
@@ -238,38 +216,32 @@ jQuery(function($){
   }
 
 
-  function current_geometry(term) {
-    if (!style.width || !style.height) {
-      try {
-        get_cell_size(term);
-      } catch (TypeError) {
-        parse_xterm_style();
-      }
-    }
+// 跨域连接
+function cross_origin_connect(event) {
+  console.log(event.origin);
+  var prop = 'connect';
+  var args;
 
-    var cols = parseInt(window.innerWidth / style.width, 10) - 1;
-    var rows = parseInt(window.innerHeight / style.height, 10);
-    return {'cols': cols, 'rows': rows};
+  try {
+    args = JSON.parse(event.data);
+  } catch (SyntaxError) {
+    args = event.data.split('|');
   }
 
-
-  function resize_terminal(term) {
-    var geometry = current_geometry(term);
-    term.on_resize(geometry.cols, geometry.rows);
+  if (!Array.isArray(args)) {
+    args = [args];
   }
 
-
-  function set_backgound_color(term, color) {
-    term.setOption('theme', {
-      background: color
-    });
+  try {
+    event_origin = event.origin;
+    wssh[prop].apply(wssh, args);
+  } finally {
+    event_origin = undefined;
   }
+}
 
-  function set_font_color(term, color) {
-    term.setOption('theme', {
-      foreground: color
-    });
-  }
+window.addEventListener('message', cross_origin_connect, false);
+
 
   function custom_font_is_loaded() {
     if (!custom_font) {
@@ -923,80 +895,6 @@ jQuery(function($){
       restore_items(fields);
       form_container.show();
     }
-}
+  }
 
-// 新添加的代码
-document.addEventListener('DOMContentLoaded', function() {
-    var sshlinkBtn = document.getElementById('sshlinkBtn');
-    var sshlink = document.getElementById('sshlink');
-    var copyButton = document.getElementById('copy-button');
-    var copyStatus = document.getElementById('copyStatus');
-
-    if (sshlinkBtn) {
-        sshlinkBtn.addEventListener('click', function() {
-            var hostname = encodeURIComponent(document.getElementById('hostname').value);
-            var port = encodeURIComponent(document.getElementById('port').value || '22');
-            var username = encodeURIComponent(document.getElementById('username').value);
-            var password = encodeURIComponent(document.getElementById('password').value);
-            var password = encodeURIComponent(btoa(document.getElementById('password').value));
-
-            var baseUrl = 'https://ssh-crazypeace.koyeb.app/';
-            var baseUrl = window.location.origin + window.location.pathname;
-            var fullLink = `${baseUrl}?hostname=${hostname}&port=${port}&username=${username}&password=${password}`;
-
-            sshlink.value = fullLink;  // 设置输入框的值为生成的链接
-            sshlink.style.display = 'block';  // 确保输入框可见
-            copyButton.style.display = 'block';  // 显示复制按钮
-            copyStatus.style.display = 'none';  // 重置复制状态显示
-            sshlink.value = fullLink;
-            sshlink.style.display = 'block';
-            copyButton.style.display = 'block';
-            copyStatus.style.display = 'none';
-        });
-    }
-    if (sshlink) {
-        sshlink.addEventListener('click', function() {
-            copyToClipboard(sshlink.value);
-        });
-    }
-
-    if (copyButton) {
-        copyButton.addEventListener('click', function() {
-            copyToClipboard(sshlink.value);
-        });
-    }
-});
-    function copyToClipboard() {
-        if (sshlink.value) {  // 检查是否有链接可以复制
-            sshlink.select();
-            sshlink.setSelectionRange(0, 99999); // For mobile devices
-
-            try {
-                var successful = document.execCommand('copy');
-                var msg = successful ? '链接已复制到剪贴板！' : '复制失败';
-                showCopyStatus(msg, successful ? 'green' : 'red');
-            } catch (err) {
-                showCopyStatus('复制失败: ' + err.message, 'red');
-            }
-        } else {
-            showCopyStatus('没有链接可复制', 'red');
-        }
-    }
-
-    if (sshlink) {
-        sshlink.addEventListener('click', copyToClipboard);
-    }
-
-    if (copyButton) {
-        copyButton.addEventListener('click', copyToClipboard);
-    }
-
-    function showCopyStatus(message, color) {
-        copyStatus.textContent = message;
-        copyStatus.style.color = color;
-        copyStatus.style.display = 'inline';
-        setTimeout(() => {
-            copyStatus.style.display = 'none';
-        }, 3000);
-    }
 });
