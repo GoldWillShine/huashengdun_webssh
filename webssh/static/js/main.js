@@ -2,12 +2,10 @@
 
 var jQuery;
 var wssh = {};
-
 (function() {
   // For FormData without getter and setter
   var proto = FormData.prototype,
       data = {};
-
   if (!proto.get) {
     proto.get = function (name) {
       if (data[name] === undefined) {
@@ -25,15 +23,28 @@ var wssh = {};
       return data[name];
     };
   }
-
   if (!proto.set) {
     proto.set = function (name, value) {
       data[name] = value;
     };
   }
+  document.querySelector('#sshlinkBtn').addEventListener("click", updateSSHlink);
 }());
 
-
+  // 添加复制功能
+  var sshlinkdiv = document.getElementById("sshlink");
+  if (sshlinkdiv) {
+    sshlinkdiv.style.cursor = "pointer";
+    sshlinkdiv.title = "Click to copy";
+    sshlinkdiv.addEventListener("click", function() {
+      var text = this.textContent;
+      if (text) {
+        navigator.clipboard.writeText(text).then(function() {
+          alert('SSH link copied to clipboard!');
+        }, function(err) {
+          console.error('Could not copy text: ', err);
+        });
+      }
 function copyToClipboard(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function() {
@@ -54,6 +65,7 @@ function copyToClipboard(text) {
     }
     document.body.removeChild(textArea);
   }
+}());
 }
 
 function updateSSHlink() {
@@ -66,12 +78,14 @@ function updateSSHlink() {
     }
     var usrnamestr = document.getElementById("username").value;
     if (usrnamestr == "") {
+      usrnamestr = "root" // 修正：将 portstr 改为 usrnamestr
       usrnamestr = "root"
     }
     var passwdstr = document.getElementById("password").value;
     var passwdstrAfterBase64 = window.btoa(passwdstr);
     var sshlinkstr;
     sshlinkstr = thisPageProtocol+"//"+thisPageUrl+"/?hostname="+hostnamestr+"&port="+portstr+"&username="+usrnamestr+"&password="+passwdstrAfterBase64;
+    document.getElementById("sshlink").textContent = sshlinkstr; // 使用 textContent 代替 innerHTML 以提高安全性
     document.getElementById("sshlink").textContent = sshlinkstr;
 }
 
@@ -80,7 +94,6 @@ document.addEventListener('DOMContentLoaded', function() {
   if (sshlinkBtn) {
     sshlinkBtn.addEventListener("click", updateSSHlink);
   }
-
   var sshlinkdiv = document.getElementById("sshlink");
   if (sshlinkdiv) {
     sshlinkdiv.style.cursor = "pointer";
@@ -93,7 +106,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
-
 jQuery(function($){
   var status = $('#status'),
       button = $('.btn-primary'),
@@ -914,93 +926,5 @@ jQuery(function($){
       form_container.show();
     }
   }
-});
-}
 
-// 新添加的代码
-document.addEventListener('DOMContentLoaded', function() {
-    var generateLinkBtn = document.getElementById('generateLinkBtn');
-    var generatedLink = document.getElementById('generatedLink');
-    if (generateLinkBtn) {
-        generateLinkBtn.addEventListener('click', function() {
-            var hostname = encodeURIComponent(document.getElementById('hostname').value);
-            var port = encodeURIComponent(document.getElementById('port').value || '22');
-            var username = encodeURIComponent(document.getElementById('username').value);
-            var password = encodeURIComponent(document.getElementById('password').value);
-            var baseUrl = 'https://ssh-crazypeace.koyeb.app/';
-            var fullLink = `${baseUrl}?hostname=${hostname}&port=${port}&username=${username}&password=${password}`;
-            
-            generatedLink.textContent = fullLink;
-            generatedLink.href = fullLink;
-        });
-    }
-  var generateLinkBtn = document.getElementById('generateLinkBtn');
-  var generatedLink = document.getElementById('generatedLink');
-  if (generateLinkBtn) {
-    generateLinkBtn.addEventListener('click', function() {
-      var hostname = encodeURIComponent(document.getElementById('hostname').value);
-      var port = encodeURIComponent(document.getElementById('port').value || '22');
-      var username = encodeURIComponent(document.getElementById('username').value);
-      var password = encodeURIComponent(document.getElementById('password').value);
-      var baseUrl = 'https://ssh-crazypeace.koyeb.app/';
-      var fullLink = `${baseUrl}?hostname=${hostname}&port=${port}&username=${username}&password=${password}`;
-      
-      generatedLink.textContent = fullLink;
-      generatedLink.href = fullLink;
-    });
-  }
-
-    if (generatedLink) {
-        generatedLink.addEventListener('click', function(event) {
-            event.preventDefault(); // 防止链接被立即打开
-            var text = this.href;
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(() => {
-                    alert('链接已复制到剪贴板！');
-                }).catch(err => {
-                    console.error('无法复制文本: ', err);
-                });
-            } else {
-                var textArea = document.createElement("textarea");
-                textArea.value = text;
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                try {
-                    var successful = document.execCommand('copy');
-                    var msg = successful ? '链接已复制到剪贴板！' : '复制失败';
-                    alert(msg);
-                } catch (err) {
-                    console.error('无法复制文本: ', err);
-                }
-                document.body.removeChild(textArea);
-            }
-  if (generatedLink) {
-    generatedLink.addEventListener('click', function(event) {
-      event.preventDefault(); // 防止链接被立即打开
-      var text = this.href;
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => {
-          alert('链接已复制到剪贴板！');
-        }).catch(err => {
-          console.error('无法复制文本: ', err);
-        });
-    }
-      } else {
-        var textArea = document.createElement("textarea");
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-          var successful = document.execCommand('copy');
-          var msg = successful ? '链接已复制到剪贴板！' : '复制失败';
-          alert(msg);
-        } catch (err) {
-          console.error('无法复制文本: ', err);
-        }
-        document.body.removeChild(textArea);
-      }
-    });
-  }
 });
