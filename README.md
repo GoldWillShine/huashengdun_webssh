@@ -1,7 +1,8 @@
 【NodeLoc.com 系列群组频道社区】
 * NodeLoc 官方群组：https://t.me/nodeloc_com
+* MODELOC | AI：https://t.me/modeloc_com
 * VPS主机交流：https://t.me/nodeloc_server
-* 快讯频道交流：https://t.me/nodeloc_ec
+* 快讯频道交流：https://t.me/nodeloc_bbs
 * NodeLoc 官方QQ群：369655515
 * QQ快讯频道：https://pd.qq.com/s/9xtdpzqfl
 * Discord NL官方社区：https://discord.gg/58FsrMnAuW
